@@ -569,14 +569,20 @@ proc TgClient.start c uses pbx, this
 	@block
 		@call .this->update()
 		xor edx, edx
+		cmp eax, 404
+		jne @f
+			@call c [printf]("Request status %d\n", pax)
+			ret
+		@@:
 		cmp eax, 200
 		je @f
+
 			@call c [printf]("Request status %d\n", pax)
 			mov edx, 5000
 		@@:
 		@call [Sleep](pdx)
 	@endb < jmp @sb >
-	ret
+	.unauthorized:
 endp
 
 proc TgClient.unmake c uses pbx, this

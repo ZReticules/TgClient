@@ -16,15 +16,17 @@
 		url 		WString
 		fpLog 		rptr 1
 
-		make 				dm this	; (this, botKey:LPWSTRZ)
-		call 				dm this	; (this, methodType:LPWSTRZ, methodName:LPWSTRZ, body:PSTR, bodySize:INT)
+		make 				dm this	; (this, botKey:PWSTRZ)
+		call 				dm this	; (this, methodType:PWSTRZ, methodName:PWSTRZ, body:PSTR, bodySize:INT)
 		update 				dm this	; (this)
-		send 				dm this
+		send 				dm this	; (this, message:PSTR, msgLen:INT, parseMode:(PWSTR or NULL))
 		reply				dm this	; (this, message:P_JSONNode, response:PSTR, respLen:INT, parseMode:)
-		onMessage			dm this
+		onMessage			dm this	; (this, callback)
+									; callback(bot:P_MyTgClient, msg:P_JSONNode)
 		onEdit				dm this
-		onCommand			dm this
 		onUnknownCommand 	dm this
+		onCommand			dm this	; (this, command:PSTR, callback)
+									; callback()
 		start 				dm this
 		; process 			dm this
 		unmake 				dm this
