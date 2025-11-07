@@ -242,7 +242,7 @@ proc TgClient.update c uses pbx, this
 			mov pax, [pbx + pointer.size]
 			mov [fpLog], pax
 
-			mov ebx, pointer[ebx]
+			mov pbx, pointer[ebx]
 			test ebx, ebx
 			@block < jz @fb >
 				@call c [putc](0x09, [fpLog])
