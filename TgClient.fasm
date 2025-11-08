@@ -242,7 +242,7 @@ proc TgClient.update c uses pbx, this
 			mov pax, [pbx + pointer.size]
 			mov [fpLog], pax
 
-			mov pbx, pointer[ebx]
+			mov pbx, pointer[pbx]
 			test ebx, ebx
 			@block < jz @fb >
 				@call c [putc](0x09, [fpLog])
@@ -286,7 +286,7 @@ proc TgClient.update c uses pbx, this
 			@call .node->forEach(.json_callback_print, <va_list addr pax + 1, [fpLog]>)
 			
 			mov ebx, dword[lParam]
-			mov ebx, pointer[ebx]
+			mov pbx, pointer[pbx]
 			test ebx, ebx
 			@block < jz @fb >
 				@@:
