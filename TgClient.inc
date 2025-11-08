@@ -1,7 +1,8 @@
 @module TgClient
 	include "FASM_OOP\String.inc"
 	include "FASM_OOP\JSONNode.inc"
-
+	include "FASM_OOP\cstdio.inc"
+	
 	include "FASM_OOP\COM\IServerXMLHTTPRequest.inc"
 
 	struct TgClient
