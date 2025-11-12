@@ -409,7 +409,7 @@ proc TgClient.update c uses pbx, this
 				@sarg @arg2, @arg3, @arg4
 				virtObj .node JSONNode at pbx from @arg1
 				virtObj .ctx TgClient.UpdateCtx at psi from @arg4
-				@call c [printf]("command\n")
+				; @call c [printf]("command\n")
 				
 				local strLen:DWORD
 				mov pax, [.ctx.indexEnd]
@@ -571,13 +571,13 @@ proc TgClient.start c uses pbx, this
 		xor edx, edx
 		cmp eax, 404
 		jne @f
-			@call c [printf]("Request status %d\n", pax)
+			@call c [fprintf]([.this.fpLog], "Request status %d\n", pax)
 			ret
 		@@:
 		cmp eax, 200
 		je @f
 
-			@call c [printf]("Request status %d\n", pax)
+			@call c [fprintf]([.this.fpLog], "Request status %d\n", pax)
 			mov edx, 5000
 		@@:
 		@call [Sleep](pdx)
