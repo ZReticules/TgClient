@@ -57,7 +57,7 @@ proc TgClient.make c uses pbx, this, apiKey, fpLog
 		@call CNV::fill([.this.__ini], [lpVoid], addr pax * 2 + 2)
 
 		@call [GetFileAttributesW]([.this.__ini])
-		cmp pax, -1
+		cmp eax, -1
 		jne @f
 			@call [WritePrivateProfileStringW](L "Main", L "updates", L "0", [.this.__ini])
 		@@:
