@@ -24,14 +24,14 @@ proc TgClient.make c uses pbx, this, apiKey, fpLog
 	; int3
 	mov [.this.fpLog], pdx
 	; pxor xmm0, xmm0
-	; movq [.this.updates], xmm0
+	; movq [.this.__updates], xmm0
 	mov [.this.__onMsg], NULL
 	@call [CoCreateInstance](CLSID_ServerXMLHTTP60, NULL, CLSCTX.INPROC_SERVER, IID_IServerXMLHTTPRequest, addr .this.__httpObj)
 
 	local size:DWORD
 	@call [size] = [GetCurrentDirectoryW](0, NULL)
 
-	@call .this.url->make(pax)
+	@call .this.__url->make(pax)
 	with path:WString(pax)
 		local lpVoid:POINTER
 
@@ -64,11 +64,11 @@ proc TgClient.make c uses pbx, this, apiKey, fpLog
 
 		@call path->realloc(23)->getLpWChars()
 		@call [path.len] = [GetPrivateProfileStringW](L "Main", L "updates", NULL, pax, 23, [.this.__ini])
-		@call [.this.updates] = path->parseInt(10)
+		@call [.this.__updates] = path->parseInt(10)
 		
 		cmp [.this.fpLog], NULL
 		je @f
-			@call c [fprintf]([.this.fpLog], "Bot started.\nSaved updates id: %lld\n", [.this.updates])
+			@call c [fprintf]([.this.fpLog], "Bot started.\nSaved updates id: %lld\n", [.this.__updates])
 		@@:
 	end_with
 	ret
@@ -105,19 +105,98 @@ proc TgClient.call c uses pbx psi, this, method, name, body, size
 	ret
 endp
 
+
+
+proc TgClient.PrintJSON c uses pbx, node, key, keyLen, lParam
+	@sarg @arg1, @arg2, @arg3, @arg4
+	
+	local fpLog:POINTER
+
+	mov ebx, dword[lParam]
+	mov pax, [pbx + pointer.size]
+	mov [fpLog], pax
+
+	mov pbx, pointer[pbx]
+	test ebx, ebx
+	@block < jz @fb >
+		@call c [putc](0x09, [fpLog])
+		dec ebx
+	@endb < jnz @sb >
+
+	virtObj .node JSONNode at pbx from [node]
+	cmp [keyLen], NULL
+	je @f
+		@call c [fprintf]([fpLog], "'%.*s': ", [keyLen], [key])
+	@@:
+	switch [.node.jType]
+		case JSONTypes.bool
+			cmp dword[.node.value], 0
+			jne @f
+				@call c [fputs]("false\n", [fpLog])
+				jmp .return
+			@@:
+			@call c [fputs]("true\n", [fpLog])
+			jmp .return
+		case JSONTypes.null
+			@call c [fputs]("null\n", [fpLog])
+			jmp .return
+		case JSONTypes.number
+			@call c [fprintf]([fpLog], "%g\n", [.node.value])
+			jmp .return
+		case JSONTypes.integer
+			@call c [fprintf]([fpLog], "%lld\n", [.node.value])
+			jmp .return
+		case JSONTypes.string
+			@call c [fprintf]([fpLog], "'%.*s'\n", [.node.len], [.node.lpStr])
+			jmp .return
+		case JSONTypes.object
+			@call c [fputs]("{\n", [fpLog])
+			jmp end_case
+		case JSONTypes.array
+			@call c [fputs]("[\n", [fpLog])
+	end_switch
+	mov pax, [lParam]
+	mov pax, pointer[pax]
+	@call .node->forEach(TgClient.PrintJSON, <va_list addr pax + 1, [fpLog]>)
+	
+	mov ebx, dword[lParam]
+	mov pbx, pointer[pbx]
+	test ebx, ebx
+	@block < jz @fb >
+		@@:
+			@call c [putc](0x09, [fpLog])
+		dec ebx
+		jnz @b
+	@endb
+	
+	mov pbx, [node]
+	
+	switch [.node.jType]
+		case JSONTypes.object
+			@call c [fputs]("}\n", [fpLog])
+			jmp .return
+		case JSONTypes.array
+			@call c [fputs]("]\n", [fpLog])
+	end_switch
+	
+	.return: 
+		mov eax, esp
+		ret
+endp
+
 proc TgClient.update c uses pbx, this
 	virtObj .this TgClient at pbx from @arg1
 	with body:String(0)
-		@call body->sprintf(const fstr '{"offset":%ld}', [.this.updates])->getLpChars()
+		@call body->sprintf(const fstr '{"offset":%ld}', [.this.__updates])->getLpChars()
 		; int3
 		@call .this->call(L "POST", L "getUpdates", pax, [body.len])
 
 		local lastUpdateId:QWORD
 
-		movq xmm0, [.this.updates]
+		movq xmm0, [.this.__updates]
 		movq [lastUpdateId], xmm0
 
-    	local pVoid:POINTER, status:POINTER, jsonText:VARIANT
+    	local pVoid:POINTER, status:DWORD, jsonText:VARIANT
     	local lBound:POINTER, uBound:POINTER
 
 		; virtObj .http IServerXMLHTTPRequest at psi from [.this.__httpObj]
@@ -136,24 +215,24 @@ proc TgClient.update c uses pbx, this
 			    sub pax, [lBound]
 			    inc pax
 			    ; int3
-				@call jnode->make(JSONTypes.parse_string, qword[pVoid], addr pax, 0)
+				@call jnode->make(JSONTypes.parse_string, qword[pVoid], pax, 0)
 				@call jnode->select("result", -1);->get("update_id", -1)
 				; mov pax, [jnode.selectedNode]
 				@call jnode->getLen()
 				test pax, pax
 					jz break_with
 				pxor xmm0, xmm0
-				movq [.this.updates], xmm0
+				movq [.this.__updates], xmm0
 				@call jnode->forEach(.json_callback, addr .this)
 				
 				; updates += 1
 				pcmpeqq xmm1, xmm1
-				movq xmm0, [.this.updates]
+				movq xmm0, [.this.__updates]
 				psubq xmm0, xmm1
-				movq [.this.updates], xmm0
+				movq [.this.__updates], xmm0
 				
 				with wstr:WString(0)
-					@call wstr->fromInt64([.this.updates], 10, 0)->getLpWChars()
+					@call wstr->fromInt64([.this.__updates], 10, 0)->getLpWChars()
 					@call [WritePrivateProfileStringW](L "Main", L "updates", pax, [.this.__ini])
 				end_with
 			end_with
@@ -181,9 +260,9 @@ proc TgClient.update c uses pbx, this
 
 	    @call [SafeArrayUnaccessData](pointer[jsonText.llVal])
 	    @call [VariantClear](addr jsonText)
-	    ; @call c [printf]("%lld\n", [.this.updates])
+	    ; @call c [printf]("%lld\n", [.this.__updates])
 	end_with
-    mov pax, [status]
+    mov eax, [status]
 	ret
 
 	proc .json_callback c uses pbx psi, node, key, keyLen, lParam
@@ -193,17 +272,19 @@ proc TgClient.update c uses pbx, this
 		movq xmm1, [pax + JSONNode.value]
 
 		virtObj .client TgClient at psi from [lParam]
-		movq xmm0, [.client.updates]
+		movq xmm0, [.client.__updates]
 		pcmpgtq xmm0, xmm1
 		ptest xmm0, xmm0
 		jnz @f
-			movq [.client.updates], xmm1
+			movq [.client.__updates], xmm1
 		@@:
+
 		cmp [.client.fpLog], NULL
 		je @f
-			@call .node->forEach(.json_callback_print, <va_list 0, [.client.fpLog]>)
+			@call .node->forEach(TgClient.PrintJSON, <va_list 0, [.client.fpLog]>)
 			@call c [putc](0Ah, [.client.fpLog])
 		@@:
+		
 		cmp [.client.__onEdit], NULL
 		@block je @fb
 			@call .node->get("edited_message", -1, NULL)
@@ -213,6 +294,7 @@ proc TgClient.update c uses pbx, this
 				jmp .return
 			@endb
 		@endb
+		
 		cmp [.client.__onMsg], NULL
 		@block je @fb
 			@call .node->select("message", 7)
@@ -232,83 +314,6 @@ proc TgClient.update c uses pbx, this
 			@call .node->reset()
 			mov eax, esp
 			ret
-
-		proc .json_callback_print c uses pbx, node, key, keyLen, lParam
-			@sarg @arg1, @arg2, @arg3, @arg4
-			
-			local fpLog:POINTER
-
-			mov ebx, dword[lParam]
-			mov pax, [pbx + pointer.size]
-			mov [fpLog], pax
-
-			mov pbx, pointer[pbx]
-			test ebx, ebx
-			@block < jz @fb >
-				@call c [putc](0x09, [fpLog])
-				dec ebx
-			@endb < jnz @sb >
-
-			virtObj .node JSONNode at pbx from [node]
-			cmp [keyLen], NULL
-			je @f
-				@call c [fprintf]([fpLog], "'%.*s': ", [keyLen], [key])
-			@@:
-			switch [.node.jType]
-				case JSONTypes.bool
-					cmp dword[.node.value], 0
-					jne @f
-						@call c [fputs]("false\n", [fpLog])
-						jmp .return
-					@@:
-					@call c [fputs]("true\n", [fpLog])
-					jmp .return
-				case JSONTypes.null
-					@call c [fputs]("null\n", [fpLog])
-					jmp .return
-				case JSONTypes.number
-					@call c [fprintf]([fpLog], "%g\n", [.node.value])
-					jmp .return
-				case JSONTypes.integer
-					@call c [fprintf]([fpLog], "%lld\n", [.node.value])
-					jmp .return
-				case JSONTypes.string
-					@call c [fprintf]([fpLog], "'%.*s'\n", [.node.len], [.node.lpStr])
-					jmp .return
-				case JSONTypes.object
-					@call c [fputs]("{\n", [fpLog])
-					jmp end_case
-				case JSONTypes.array
-					@call c [fputs]("[\n", [fpLog])
-			end_switch
-			mov pax, [lParam]
-			mov pax, pointer[pax]
-			@call .node->forEach(.json_callback_print, <va_list addr pax + 1, [fpLog]>)
-			
-			mov ebx, dword[lParam]
-			mov pbx, pointer[pbx]
-			test ebx, ebx
-			@block < jz @fb >
-				@@:
-					@call c [putc](0x09, [fpLog])
-				dec ebx
-				jnz @b
-			@endb
-			
-			mov pbx, [node]
-			
-			switch [.node.jType]
-				case JSONTypes.object
-					@call c [fputs]("}\n", [fpLog])
-					jmp .return
-				case JSONTypes.array
-					@call c [fputs]("]\n", [fpLog])
-			end_switch
-			
-			.return: 
-				mov eax, esp
-				ret
-		endp
 			
 		struct TgClient.UpdateCtx
 			msg 		P_JSONNode
@@ -558,9 +563,26 @@ proc TgClient.send c uses pbx psi pdi, this, chatId:QWORD, message, msgLen, pars
 		jne @f
 			mov pdx, .fmt_no_parse_mode
 		@@:
-		@call body->sprintf(pdx, [chatId], [msgLen], [message], [parseMode])->getLpChars()
+		@call body->sprintf(pdx, [chatId], [msgLen], [message], [parseMode])->println()->getLpChars()
 		@call .this->call(L "POST", L "sendMessage", pax, [body.len])
 	end_with
+	local status:DWORD
+
+	; virtObj .http IServerXMLHTTPRequest at psi from [.this.__httpObj]
+	; int3
+    @call [.this.__httpObj]->get_status(addr status)
+    ; cmp [status], 200
+    mov eax, [status]
+	ret
+endp
+
+proc TgClient.getMe c uses pbx, this
+	virtObj .this TgClient at pbx from @arg1
+	@sarg @arg2
+	@call .this->call(L "GET", L "getMe", NULL, 0)
+	local status:DWORD
+    @call [.this.__httpObj]->get_status(addr status)
+    mov eax, [status]
 	ret
 endp
 
@@ -582,7 +604,39 @@ proc TgClient.start c uses pbx, this
 		@@:
 		@call [Sleep](pdx)
 	@endb < jmp @sb >
-	.unauthorized:
+endp
+
+proc TgClient.getCallResult c uses pbx pdi, this:P_TgClient, pResult:P_TgClient.CallResult
+	virtObj .this TgClient at pbx from @arg1
+	virtObj .callRslt TgClient.CallResult at pdi from @arg2
+
+	@call CNV::memset(addr .callRslt, 0, sizeof.TgClient.CallResult)
+
+	local status:DWORD
+	local lBound:POINTER, uBound:POINTER
+
+	; virtObj .http IServerXMLHTTPRequest at psi from [.this.__httpObj]
+	; int3
+    @call [.this.__httpObj]->get_status(addr status)
+    xor eax, eax
+    cmp [status], 200
+    	jne .result
+    @call [.this.__httpObj]->get_responseBody(addr .callRslt.variant)
+    @call [SafeArrayAccessData](pointer[.callRslt.variant.llVal], addr .callRslt.bytes)
+    @call [SafeArrayGetLBound](pointer[.callRslt.variant.llVal], 1, addr lBound)
+    @call [SafeArrayGetUBound](pointer[.callRslt.variant.llVal], 1, addr uBound)
+    ; mov pax, [uBound]
+    ; sub pax, [lBound]
+    ; inc pax
+    ; movptr xmm0, [.callRslt.bytes]
+    ; @call c [printf]("%.*s", eax, xmm0)
+    mov pax, [uBound]
+    sub pax, [lBound]
+    inc pax
+    movptr xmm0, [.callRslt.bytes]
+    ; int3
+    @call .callRslt.json->make(JSONTypes.parse_string, qword xmm0, pax, 0)
+	.result: ret
 endp
 
 proc TgClient.unmake c uses pbx, this
@@ -593,6 +647,16 @@ proc TgClient.unmake c uses pbx, this
 	@call .http->Release()
 	@call .this.__comDict->unmake()
 	ret
+endp
+
+proc TgClient.CallResult.unmake c, this:P_TgClient.CallResult
+	virtObj .this TgClient.CallResult at pbx from @arg1
+	cmp [.this.bytes], NULL
+		je .return
+	@call .this.json->unmake()
+    @call [SafeArrayUnaccessData](pointer[.this.variant.llVal])
+    @call [VariantClear](addr .this.variant)
+	.return: ret
 endp
 
 proc_resprologue
